@@ -1,15 +1,14 @@
 import logging
 import os
-import asyncio
 from io import BytesIO
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from transformers import AutoTokenizer, AutoModel
 from flask import Flask, request, jsonify
 import openai
-import torch
 from sklearn.metrics.pairwise import cosine_similarity
-from docx import Document  # Для роботи з DOCX
+from docx import Document
+from PyPDF2 import PdfReader
 
 # Ініціалізація Flask
 flask_app = Flask(__name__)
@@ -31,7 +30,6 @@ model = AutoModel.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2
 # Функція для читання PDF
 def read_pdf(file) -> str:
     try:
-        from PyPDF2 import PdfReader
         reader = PdfReader(file)
         text = "".join(page.extract_text() or "" for page in reader.pages)
         return text
@@ -82,20 +80,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привіт! Виберіть тип задачі:", reply_markup=reply_markup)
 
 # Основний цикл
-async def main():
-    from hypercorn.asyncio import serve
-    from hypercorn.config import Config
-    config = Config()
-    config.bind = ["0.0.0.0:5000"]
-
-    # Telegram бот
+async def start_bot():
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
-    
-    flask_task = serve(flask_app, config)
-    telegram_task = application.run_polling(close_loop=False)
+    await application.run_polling()
 
-    await asyncio.gather(flask_task, telegram_task)
-
+# Запуск Flask через Uvicorn
 if __name__ == "__main__":
+    import asyncio
+    from uvicorn import Config, Server
+
+    async def main():
+        flask_task = asyncio.create_task(Server(Config(app=flask_app, host="0.0.0.0", port=5000)).serve())
+        telegram_task = asyncio.create_task(start_bot())
+        await asyncio.gather(flask_task, telegram_task)
+
     asyncio.run(main())
