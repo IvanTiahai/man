@@ -13,6 +13,7 @@ import openai
 import torch
 from sklearn.metrics.pairwise import cosine_similarity
 import sys
+import multiprocessing
 
 # Ініціалізація Flask
 flask_app = Flask(__name__)
@@ -167,39 +168,33 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     result = await check_for_plagiarism_with_gpt(document_text)
     await update.message.reply_text(result)
 
-# Основна функція для запуску бота
-async def run_telegram_bot():
-    application = ApplicationBuilder().token("7959992406:AAE2ZH_NSzrRtVjwBZIdHkw36hPyint3Znw").build()  # Замініть на ваш токен бота
-    application.add_handler(CommandHandler("start", start))
-
-    # Додаємо хендлер для вибору користувача
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_choice))
-
-    # Додаємо хендлер для текстових повідомлень
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_text))
-
-    # Додаємо хендлер для документів
-    application.add_handler(MessageHandler(filters.Document.ALL, document_handler))
-
-    # Запускаємо бота
-    await application.run_polling()
-
-# Функція для запуску Flask сервера
-def run_flask():
-    flask_app.run(debug=True, use_reloader=False)
-
-# Основний блок запуску
-if __name__ == "__main__":
+def main():
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    
-    import nest_asyncio
-    nest_asyncio.apply()
 
-    # Запуск Flask сервера в окремому потоці
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.start()
+    # Запуск Flask сервера в окремому процесі
+    flask_process = multiprocessing.Process(target=run_flask)
+    flask_process.start()
 
-    # Запуск Telegram бота в уже існуючому event loop
-    asyncio.run(run_telegram_bot())
+    # Telegram бот
+    async def run_telegram():
+        application = ApplicationBuilder().token("7959992406:AAE2ZH_NSzrRtVjwBZIdHkw36hPyint3Znw").build()
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_choice))
+        application.add_handler(MessageHandler(filters.Document.ALL, document_handler))
 
+        await application.run_polling(close_loop=False)  # Важливо: close_loop=False
+
+    # Використання вже існуючого циклу подій
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(run_telegram())
+    except Exception as e:
+        logging.error(f"Помилка у Telegram боті: {e}")
+    finally:
+        # Завершення Flask процесу
+        flask_process.terminate()
+        flask_process.join()
+
+if __name__ == "__main__":
+    main()
