@@ -1,0 +1,11 @@
+flask
+werkzeug
+python-telegram-bot
+transformers
+openai
+torch
+torchvision
+PyPDF2
+docx
+scikit-learn
+nest_asyncio
