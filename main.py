@@ -1,200 +1,101 @@
 import logging
 import os
-import threading
 import asyncio
+from io import BytesIO
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from transformers import AutoTokenizer, AutoModel
 from flask import Flask, request, jsonify
-from werkzeug.exceptions import HTTPException
-from PyPDF2 import PdfReader
-from docx import Document as DocxDocument
 import openai
 import torch
 from sklearn.metrics.pairwise import cosine_similarity
-import sys
-import multiprocessing
+from docx import Document  # Для роботи з DOCX
 
 # Ініціалізація Flask
 flask_app = Flask(__name__)
 
 # Ініціалізація OpenAI API
-openai.api_key = "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"  # Замініть на ваш ключ OpenAI
+openai.api_key = os.getenv("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")
+if not openai.api_key:
+    raise ValueError("OPENAI_API_KEY не встановлено!")
+
+# Ініціалізація Telegram Token
+TELEGRAM_TOKEN = os.getenv("7959992406:AAE2ZH_NSzrRtVjwBZIdHkw36hPyint3Znw")
+if not TELEGRAM_TOKEN:
+    raise ValueError("TELEGRAM_TOKEN не встановлено!")
 
 # Ініціалізація моделі для порівняння текстів
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
 model = AutoModel.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
 
-# Функція для читання PDF-файлу
+# Функція для читання PDF
 def read_pdf(file) -> str:
     try:
+        from PyPDF2 import PdfReader
         reader = PdfReader(file)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() or ""  # Перевірка на наявність тексту
+        text = "".join(page.extract_text() or "" for page in reader.pages)
         return text
     except Exception as e:
-        raise HTTPException(f"Помилка обробки PDF: {str(e)}")
+        return f"Помилка обробки PDF: {str(e)}"
 
-# Функція для читання DOCX-файлу
+# Функція для читання DOCX
 def read_docx(file) -> str:
     try:
-        doc = DocxDocument(file)
-        text = ""
-        for para in doc.paragraphs:
-            text += para.text + "\n"
+        document = Document(file)
+        text = "".join(paragraph.text + "\n" for paragraph in document.paragraphs)
         return text
     except Exception as e:
-        raise HTTPException(f"Помилка обробки DOCX: {str(e)}")
+        return f"Помилка обробки DOCX: {str(e)}"
 
-# Функція для читання TXT-файлу
+# Функція для читання TXT
 def read_txt(file) -> str:
     try:
-        text = file.read().decode("utf-8")
-        return text
+        return file.read().decode("utf-8")
     except Exception as e:
-        raise HTTPException(f"Помилка обробки TXT: {str(e)}")
+        return f"Помилка обробки TXT: {str(e)}"
 
-# Маршрут для завантаження документів через Flask
+# Flask маршрут для завантаження файлів
 @flask_app.route('/upload/', methods=['POST'])
 def upload_file():
-    file = request.files['file']
-    file_ext = os.path.splitext(file.filename)[-1].lower()
-
-    # Перевірка формату файлу
-    if file_ext == ".pdf":
-        text = read_pdf(file)
-    elif file_ext == ".txt":
-        text = read_txt(file)
-    elif file_ext == ".docx":
-        text = read_docx(file)
-    else:
-        return jsonify({"detail": "Формат файлу не підтримується. Завантажте PDF, DOCX або TXT."}), 400
-
-    # Повернення частини тексту
-    return jsonify({
-        "filename": file.filename,
-        "content": text[:1000]  # Перша частина тексту (для тестування)
-    })
-
-# Функція для порівняння схожості текстів
-def compare_texts(text1: str, text2: str) -> float:
-    # Токенізація текстів
-    inputs = tokenizer([text1, text2], padding=True, truncation=True, return_tensors="pt")
-
-    # Отримання векторних представлень
-    with torch.no_grad():
-        embeddings = model(**inputs).last_hidden_state.mean(dim=1)  # Середнє по всіх токенах для кожного тексту
-
-    # Обчислення косинусної схожості
-    similarity = cosine_similarity(embeddings[0].numpy().reshape(1, -1), embeddings[1].numpy().reshape(1, -1))
-    return similarity[0][0]
-
-# Функція для запиту до GPT для перевірки плагіату
-async def ask_gpt(prompt: str) -> str:
     try:
-        # Використання OpenAI API для запиту до GPT-4
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "system", "content": "You are a plagiarism detection assistant."},
-                      {"role": "user", "content": prompt}]
-        )
-        return response['choices'][0]['message']['content']
+        file = request.files['file']
+        file_ext = os.path.splitext(file.filename)[-1].lower()
+        buffer = BytesIO(file.read())  # Зберігаємо файл в пам'яті
+
+        if file_ext == ".pdf":
+            text = read_pdf(buffer)
+        elif file_ext == ".txt":
+            text = buffer.getvalue().decode("utf-8")
+        elif file_ext == ".docx":
+            text = read_docx(buffer)
+        else:
+            return jsonify({"detail": "Формат файлу не підтримується"}), 400
+
+        return jsonify({"filename": file.filename, "content": text[:1000]})
     except Exception as e:
-        return f"Помилка під час звернення до OpenAI: {e}"
+        return jsonify({"detail": f"Помилка: {str(e)}"}), 500
 
-# Функція перевірки тексту на плагіат через GPT
-async def check_for_plagiarism_with_gpt(input_text: str) -> str:
-    prompt = f"Чи схожий цей текст на будь-який із відомих? Текст: {input_text}"
-    result = await ask_gpt(prompt)
-    return f"Результат GPT:\n{result}"
-
-# Функція для команди /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Кнопки для вибору типу задачі
-    keyboard = [
-        ["Текстове повідомлення", "Текстовий документ"]
-    ]
-    
-    # Визначення розмітки клавіатури
+# Telegram бот
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [["Текстове повідомлення", "Текстовий документ"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    
-    # Надсилаємо користувачу вітальне повідомлення з кнопками
-    await update.message.reply_text(
-        "Привіт! Виберіть тип задачі:",
-        reply_markup=reply_markup
-    )
+    await update.message.reply_text("Привіт! Виберіть тип задачі:", reply_markup=reply_markup)
 
-# Функція для обробки вибору користувача
-async def handle_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_choice = update.message.text
-    
-    if user_choice == "Текстове повідомлення":
-        await update.message.reply_text("Надішліть текст для перевірки на плагіат.")
-    elif user_choice == "Текстовий документ":
-        await update.message.reply_text("Надішліть файл (PDF, DOCX, TXT) для перевірки на плагіат.")
-    else:
-        await update.message.reply_text("Будь ласка, виберіть одну з опцій: 'Текстове повідомлення' або 'Текстовий документ'.")
-
-# Функція обробки тексту від користувача
-async def check_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_text = update.message.text
-    # Перевіряємо текст на плагіат через GPT
-    result = await check_for_plagiarism_with_gpt(user_text)
-    await update.message.reply_text(result)
-
-# Функція для обробки документів, надісланих користувачем
-async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    file = await context.bot.get_file(update.message.document.file_id)
-    file_ext = os.path.splitext(file.file_path)[-1].lower()
-
-    # Завантаження документу
-    await file.download("user_document" + file_ext)
-    
-    # Читання документа відповідно до його формату
-    if file_ext == ".pdf":
-        with open("user_document.pdf", "rb") as f:
-            document_text = read_pdf(f)
-    elif file_ext == ".txt":
-        with open("user_document.txt", "rb") as f:
-            document_text = read_txt(f)
-    elif file_ext == ".docx":
-        with open("user_document.docx", "rb") as f:
-            document_text = read_docx(f)
-    else:
-        document_text = "Невідомий формат файлу."
-
-    # Перевірка на плагіат через GPT
-    result = await check_for_plagiarism_with_gpt(document_text)
-    await update.message.reply_text(result)
-
-def main():
-    if sys.platform == "win32":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-    # Запуск Flask сервера в окремому процесі
-    flask_process = multiprocessing.Process(target=run_flask)
-    flask_process.start()
+# Основний цикл
+async def main():
+    from hypercorn.asyncio import serve
+    from hypercorn.config import Config
+    config = Config()
+    config.bind = ["0.0.0.0:5000"]
 
     # Telegram бот
-    async def run_telegram():
-        application = ApplicationBuilder().token("7959992406:AAE2ZH_NSzrRtVjwBZIdHkw36hPyint3Znw").build()
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_choice))
-        application.add_handler(MessageHandler(filters.Document.ALL, document_handler))
+    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    
+    flask_task = serve(flask_app, config)
+    telegram_task = application.run_polling(close_loop=False)
 
-        await application.run_polling(close_loop=False)  # Важливо: close_loop=False
-
-    # Використання вже існуючого циклу подій
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(run_telegram())
-    except Exception as e:
-        logging.error(f"Помилка у Telegram боті: {e}")
-    finally:
-        # Завершення Flask процесу
-        flask_process.terminate()
-        flask_process.join()
+    await asyncio.gather(flask_task, telegram_task)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
