@@ -19,7 +19,11 @@ import multiprocessing
 flask_app = Flask(__name__)
 
 # Ініціалізація OpenAI API
+<<<<<<< HEAD
 openai.api_key = "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"  # Замініть на ваш ключ OpenAI
+=======
+openai.api_key = os.environ.get("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")
+>>>>>>> 63003d6 (Initial commit)
 
 # Ініціалізація моделі для порівняння текстів
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
@@ -167,6 +171,13 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # Перевірка на плагіат через GPT
     result = await check_for_plagiarism_with_gpt(document_text)
     await update.message.reply_text(result)
+<<<<<<< HEAD
+=======
+# Заміна функції запуску Flask
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))  # Отримання порту зі змінної середовища
+    flask_app.run(host="0.0.0.0", port=port)
+>>>>>>> 63003d6 (Initial commit)
 
 def main():
     if sys.platform == "win32":
@@ -178,7 +189,11 @@ def main():
 
     # Telegram бот
     async def run_telegram():
+<<<<<<< HEAD
         application = ApplicationBuilder().token("7959992406:AAE2ZH_NSzrRtVjwBZIdHkw36hPyint3Znw").build()
+=======
+        application = ApplicationBuilder().token(os.environ.get("7959992406:AAE2ZH_NSzrRtVjwBZIdHkw36hPyint3Znw")).build()
+>>>>>>> 63003d6 (Initial commit)
         application.add_handler(CommandHandler("start", start))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_choice))
         application.add_handler(MessageHandler(filters.Document.ALL, document_handler))
@@ -197,4 +212,9 @@ def main():
         flask_process.join()
 
 if __name__ == "__main__":
+<<<<<<< HEAD
     main()
+=======
+    # main()
+    run_flask()
+>>>>>>> 63003d6 (Initial commit)
