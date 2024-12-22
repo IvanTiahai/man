@@ -14,7 +14,7 @@ from PyPDF2 import PdfReader
 flask_app = Flask(__name__)
 
 # Ініціалізація OpenAI API
-openai.api_key = os.getenv("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")
+openai.api_key = os.getenv("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")
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY не встановлено!")
 
@@ -91,8 +91,16 @@ if __name__ == "__main__":
     from uvicorn import Config, Server
 
     async def main():
-        flask_task = asyncio.create_task(Server(Config(app=flask_app, host="0.0.0.0", port=5000)).serve())
+        # Отримуємо порт із змінної середовища або використовуємо 5000 за замовчуванням
+        port = int(os.getenv("PORT", 5000))
+
+        # Запуск Flask через Uvicorn
+        flask_task = asyncio.create_task(Server(Config(app=flask_app, host="0.0.0.0", port=port)).serve())
+
+        # Запуск Telegram бота
         telegram_task = asyncio.create_task(start_bot())
+
+        # Одночасний запуск Flask і Telegram
         await asyncio.gather(flask_task, telegram_task)
 
     asyncio.run(main())
