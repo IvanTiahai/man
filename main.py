@@ -14,7 +14,7 @@ from PyPDF2 import PdfReader
 flask_app = Flask(__name__)
 
 # Ініціалізація OpenAI API
-openai.api_key = os.getenv("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")
+openai.api_key = os.getenv("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")
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY не встановлено!")
 
