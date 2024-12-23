@@ -1,5 +1,6 @@
 import logging
 import os
+import asyncio
 from io import BytesIO
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -7,25 +8,28 @@ from transformers import AutoTokenizer, AutoModel
 from flask import Flask, request, jsonify
 import openai
 from sklearn.metrics.pairwise import cosine_similarity
-from docx import Document
-from PyPDF2 import PdfReader
+from docx import Document  # Для роботи з DOCX
 
 # Ініціалізація Flask
 flask_app = Flask(__name__)
 
 # Ініціалізація OpenAI API
-openai.api_key = os.getenv("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")
+openai.api_key = os.getenv("API_KEY")
 if not openai.api_key:
-    raise ValueError("OPENAI_API_KEY не встановлено!")
+    raise ValueError("OPENAI_API_KEY не встановлено або недоступно в змінних середовища!")
 
 # Ініціалізація Telegram Token
-TELEGRAM_TOKEN = os.getenv("7959992406:AAE2ZH_NSzrRtVjwBZIdHkw36hPyint3Znw")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TELEGRAM_TOKEN:
-    raise ValueError("TELEGRAM_TOKEN не встановлено!")
+    raise ValueError("TELEGRAM_TOKEN не встановлено або недоступно в змінних середовища!")
 
 # Ініціалізація моделі для порівняння текстів
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
 model = AutoModel.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
+
+# Решта функцій залишаються без змін
+# ...
+
 
 # Функція для читання PDF
 def read_pdf(file) -> str:
