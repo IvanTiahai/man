@@ -14,7 +14,7 @@ from docx import Document  # Для роботи з DOCX
 flask_app = Flask(__name__)
 
 # Ініціалізація OpenAI API
-openai.api_key = os.getenv("API_KEY")
+openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY не встановлено або недоступно в змінних середовища!")
 
