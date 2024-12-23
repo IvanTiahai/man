@@ -7,3 +7,4 @@ openai
 scikit-learn
 pypdf2
 python-docx
+nest_asyncio
