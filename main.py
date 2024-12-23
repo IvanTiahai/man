@@ -7,6 +7,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from transformers import AutoTokenizer, AutoModel
 from flask import Flask, request, jsonify
 import openai
+import torch
 from sklearn.metrics.pairwise import cosine_similarity
 from docx import Document  # Для роботи з DOCX
 
@@ -16,24 +17,21 @@ flask_app = Flask(__name__)
 # Ініціалізація OpenAI API
 openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
-    raise ValueError("OPENAI_API_KEY не встановлено або недоступно в змінних середовища!")
+    raise ValueError("OPENAI_API_KEY не встановлено!")
 
 # Ініціалізація Telegram Token
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TELEGRAM_TOKEN:
-    raise ValueError("TELEGRAM_TOKEN не встановлено або недоступно в змінних середовища!")
+    raise ValueError("TELEGRAM_TOKEN не встановлено!")
 
 # Ініціалізація моделі для порівняння текстів
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
 model = AutoModel.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
 
-# Решта функцій залишаються без змін
-# ...
-
-
 # Функція для читання PDF
 def read_pdf(file) -> str:
     try:
+        from PyPDF2 import PdfReader
         reader = PdfReader(file)
         text = "".join(page.extract_text() or "" for page in reader.pages)
         return text
@@ -84,27 +82,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привіт! Виберіть тип задачі:", reply_markup=reply_markup)
 
 # Основний цикл
-async def start_bot():
+async def main():
+    from hypercorn.asyncio import serve
+    from hypercorn.config import Config
+    config = Config()
+    config.bind = ["0.0.0.0:5000"]
+
+    # Telegram бот
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
-    await application.run_polling()
+    
+    flask_task = serve(flask_app, config)
+    telegram_task = application.run_polling(close_loop=False)
 
-# Запуск Flask через Uvicorn
+    await asyncio.gather(flask_task, telegram_task)
+
 if __name__ == "__main__":
-    import asyncio
-    from uvicorn import Config, Server
-
-    async def main():
-        # Отримуємо порт із змінної середовища або використовуємо 5000 за замовчуванням
-        port = int(os.getenv("PORT", 5000))
-
-        # Запуск Flask через Uvicorn
-        flask_task = asyncio.create_task(Server(Config(app=flask_app, host="0.0.0.0", port=port)).serve())
-
-        # Запуск Telegram бота
-        telegram_task = asyncio.create_task(start_bot())
-
-        # Одночасний запуск Flask і Telegram
-        await asyncio.gather(flask_task, telegram_task)
-
     asyncio.run(main())
