@@ -28,6 +28,19 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN не встановлено!")
 
+# URL для вебхуків
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Наприклад, https://ваш-домен.com/telegram-webhook
+if not WEBHOOK_URL:
+    raise ValueError("WEBHOOK_URL не встановлено!")
+
+# Маршрут для отримання запитів вебхука
+@flask_app.route("/telegram-webhook", methods=["POST"])
+def webhook():
+    if request.method == "POST":
+        json_update = request.get_json()
+        application.update_queue.put(json_update)
+        return "OK", 200
+
 # Ініціалізація моделі для порівняння текстів
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
 model = AutoModel.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
@@ -113,4 +126,5 @@ async def main():
     await asyncio.gather(flask_task, telegram_task)
 
 if __name__ == "__main__":
+    application.bot.set_webhook(WEBHOOK_URL + "/telegram-webhook")
     asyncio.run(main())
