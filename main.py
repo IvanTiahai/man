@@ -5,11 +5,15 @@ from io import BytesIO
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from transformers import AutoTokenizer, AutoModel
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 import openai
 import torch
 from sklearn.metrics.pairwise import cosine_similarity
 from docx import Document  # Для роботи з DOCX
+import nest_asyncio
+
+# Ініціалізація Nest Asyncio
+nest_asyncio.apply()
 
 # Ініціалізація Flask
 flask_app = Flask(__name__)
@@ -27,6 +31,12 @@ if not TELEGRAM_TOKEN:
 # Ініціалізація моделі для порівняння текстів
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
 model = AutoModel.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
+
+# Обмеження розміру файлу для Flask
+@flask_app.before_request
+def limit_file_size():
+    if request.content_length and request.content_length > 16 * 1024 * 1024:  # 16 MB
+        abort(413, description="Файл занадто великий.")
 
 # Функція для читання PDF
 def read_pdf(file) -> str:
@@ -81,17 +91,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text("Привіт! Виберіть тип задачі:", reply_markup=reply_markup)
 
+# Функція для обробки текстів
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"Ви написали: {update.message.text}")
+
 # Основний цикл
 async def main():
     from hypercorn.asyncio import serve
     from hypercorn.config import Config
     config = Config()
-    config.bind = ["0.0.0.0:5000"]
+    config.bind = ["0.0.0.0:5500"]
 
     # Telegram бот
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
-    
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+
     flask_task = serve(flask_app, config)
     telegram_task = application.run_polling(close_loop=False)
 
