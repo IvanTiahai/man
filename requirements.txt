@@ -1,5 +1,4 @@
 flask
-hypercorn
 python-telegram-bot
 torch
 transformers
@@ -10,4 +9,3 @@ python-docx
 nest_asyncio
 gunicorn
 googlesearch-python
-quart
