@@ -30,7 +30,7 @@ if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN не встановлено!")
 
 # URL для вебхуків
-WEBHOOK_URL = os.getenv("WEBHOOK_URL"+"/telegram-webhook")  # Наприклад, https://ваш-домен.com/telegram-webhook
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Наприклад, https://ваш-домен.com/telegram-webhook
 if not WEBHOOK_URL:
     raise ValueError("WEBHOOK_URL не встановлено!")
 
