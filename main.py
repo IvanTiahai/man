@@ -39,32 +39,76 @@ if not WEBHOOK_URL:
 def home():
     return "Сервер працює успішно!", 200
 
-
+# Ініціалізація моделі для порівняння текстів
+tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
+model = AutoModel.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
 
 #new
-application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+# Telegram бот
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [["Текстове повідомлення", "Текстовий документ"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text("Привіт! Виберіть тип задачі:", reply_markup=reply_markup)
 
-asyncio.run(application.bot.set_webhook(WEBHOOK_URL))
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    document = update.message.document
+    if not document:
+        await update.message.reply_text("Будь ласка, надішліть файл.")
+        return
+
+    file = await document.get_file()
+    file_path = await file.download_as_bytearray()
+    file_ext = os.path.splitext(document.file_name)[-1].lower()
+    buffer = BytesIO(file_path)
+
+    if file_ext == ".pdf":
+        text = read_pdf(buffer)
+    elif file_ext == ".txt":
+        text = buffer.decode("utf-8")
+    elif file_ext == ".docx":
+        text = read_docx(buffer)
+    else:
+        await update.message.reply_text("Формат файлу не підтримується.")
+        return
+
+    # Відправка результату аналізу файлу
+    await update.message.reply_text(f"Зміст файлу: {text[:1000]}")  # Відправляємо перші 1000 символів
+
+
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    input_text = update.message.text
+    reference_texts = ["Привіт, як справи?", "Це тестове повідомлення.", "Виберіть тип задачі."]
+    input_embedding = model(**tokenizer(input_text, return_tensors="pt"))[0].mean(dim=1)
+    reference_embeddings = torch.stack([model(**tokenizer(ref, return_tensors="pt"))[0].mean(dim=1) for ref in reference_texts])
+    similarities = cosine_similarity(input_embedding.detach().numpy(), reference_embeddings.detach().numpy())
+    max_similarity = similarities.max()
+    closest_match = reference_texts[similarities.argmax()]
+    similarity_threshold = 0.7
+
+    if max_similarity >= similarity_threshold:
+        await update.message.reply_text(f"Текст збігається з: \"{closest_match}\" (Схожість: {max_similarity:.2f})")
+    else:
+        await update.message.reply_text(f"Немає збігів. Найближчий текст: \"{closest_match}\" (Схожість: {max_similarity:.2f})")
+
+# Ініціалізація Telegram Application    
+application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+
+# Асинхронне встановлення вебхука
+async def setup_webhook():
+    await application.bot.set_webhook(WEBHOOK_URL)
+    
+asyncio.run(setup_webhook())
 
 # Маршрут для отримання запитів вебхука
 @flask_app.route("/telegram-webhook", methods=["POST"])
 def webhook():
     if request.method == "POST":
         json_update = request.get_json()
-
-        # Передача JSON-оновлення в чергу Telegram Application
-        if 'application' in globals():
-            application.update_queue.put(json_update)
-        else:
-            return "Telegram Application not initialized", 500
-
+        application.update_queue.put(json_update)
         return "OK", 200
-
-# Ініціалізація моделі для порівняння текстів
-tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
-model = AutoModel.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
 
 # Обмеження розміру файлу для Flask
 @flask_app.before_request
@@ -126,35 +170,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Ви написали: {update.message.text}")
 
-# Основний цикл
-async def main():
-    global application
-    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    await application.bot.delete_webhook()
-    await application.bot.set_webhook(WEBHOOK_URL + "/telegram-webhook")
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
-    port = int(os.getenv("PORT", 5000))  # Порт для сервера
-    flask_app.run(host="0.0.0.0", port=port, threaded=True)
-
-# Запуск через Gunicorn
-class FlaskAppWrapper(BaseApplication):
-    def __init__(self, app, options=None):
-        self.app = app
-        self.options = options or {}
-        super().__init__()
-
-    def load_config(self):
-        for key, value in self.options.items():
-            self.cfg.set(key, value)
-
-    def load(self):
-        return self.app
 
 if __name__ == "__main__":
+    from gunicorn.app.base import BaseApplication
+
+    class FlaskAppWrapper(BaseApplication):
+        def __init__(self, app, options=None):
+            self.app = app
+            self.options = options or {}
+            super().__init__()
+
+        def load_config(self):
+            for key, value in self.options.items():
+                self.cfg.set(key, value)
+
+        def load(self):
+            return self.app
+    
     options = {
         "bind": f"0.0.0.0:{os.getenv('PORT', '5000')}",
         "workers": 4,
