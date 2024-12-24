@@ -161,19 +161,6 @@ def upload_file():
     except Exception as e:
         return jsonify({"detail": f"Помилка: {str(e)}"}), 500
 
-# Telegram бот
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [["Текстове повідомлення", "Текстовий документ"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("Привіт! Виберіть тип задачі:", reply_markup=reply_markup)
-
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Ви написали: {update.message.text}")
-
-
-
-
-
 if __name__ == "__main__":
     from gunicorn.app.base import BaseApplication
 
