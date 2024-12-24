@@ -82,10 +82,14 @@ async def setup_webhook():
 
 @flask_app.route("/telegram-webhook", methods=["POST"])
 async def webhook():
-    json_update = await request.get_json()
-    logger.info(f"Отримано оновлення від Telegram: {json_update}")
-    await application.update_queue.put(json_update)
-    return "OK", 200
+    try:
+        json_update = await request.get_json()
+        logger.info(f"Отримано оновлення від Telegram: {json_update}")
+        await application.update_queue.put(json_update)
+        return "OK", 200
+    except Exception as e:
+        logger.error(f"Помилка при обробці запиту: {e}")
+        return "Internal Server Error", 500
 
 if __name__ == "__main__":
     # Запуск Flask через Gunicorn
