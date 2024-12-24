@@ -13,10 +13,15 @@ from docx import Document  # Для роботи з DOCX
 import nest_asyncio
 from gunicorn.app.base import BaseApplication  # Для продакшн-сервера
 from googlesearch import search
+from quart import Quart, request
+import hashlib
 
 # Ініціалізація логера
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Глобальний кеш
+cache = {}
 
 # Ініціалізація Nest Asyncio
 nest_asyncio.apply()
@@ -56,11 +61,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text("Привіт! Виберіть тип задачі:", reply_markup=reply_markup)
 
+def get_document_hash(content: str) -> str:
+    return hashlib.sha256(content.encode('utf-8')).hexdigest()
+
 def check_plagiarism(text: str):
     paragraphs = text.split("\n\n")
     results = []
     for paragraph in paragraphs:
         if len(paragraph.strip()) > 10:  # Ігноруємо короткі фрагменти
+            logger.info(f"Перевіряється фрагмент: {paragraph[:50]}...")
             try:
                 response = openai.Completion.create(
                     engine="text-davinci-003",
@@ -111,8 +120,18 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Формат файлу не підтримується.")
         return
 
+    # Генерація хеша документа
+    doc_hash = get_document_hash(text)
+
+    # Перевірка кешу
+    if doc_hash in cache:
+        logger.info("Документ знайдено в кеші.")
+        cached_results = cache[doc_hash]
+        await update.message.reply_text(cached_results[:4000])  # Telegram має обмеження 4000 символів
+        return
+
     # Перевірка на плагіат через OpenAI
-    results_openai =  check_plagiarism(text)
+    results_openai = check_plagiarism(text)
     report_openai = "Перевірка OpenAI:\n"
     for result in results_openai:
         report_openai += f"Фрагмент: {result['paragraph'][:50]}...\nРезультат: {result['result']}\n\n"
@@ -124,10 +143,13 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             links = search_google(paragraph[:50])  # Перевіряємо перші 50 символів фрагмента
             report_google += f"Фрагмент: {paragraph[:50]}...\nДжерела:\n" + "\n".join(links) + "\n\n"
 
+    # Збереження результатів у кеш
+    full_report = report_openai + "\n" + report_google
+    cache[doc_hash] = full_report
+
     # Відправка результатів
     await update.message.reply_text(report_openai[:4000])  # Telegram має обмеження 4000 символів
     await update.message.reply_text(report_google[:4000])
-
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     input_text = update.message.text
@@ -158,11 +180,14 @@ asyncio.run(setup_webhook())
 
 # Маршрут для отримання запитів вебхука
 @flask_app.route("/telegram-webhook", methods=["POST"])
-def webhook():
+async def webhook():
     if request.method == "POST":
-        json_update = request.get_json()
-        application.update_queue.put(json_update)
+        json_update = await request.get_json()
+        logger.info(f"Отримано запит: {json_update}")
+        await application.update_queue.put(json_update)
         return "OK", 200
+
+
 
 # Обмеження розміру файлу для Flask
 @flask_app.before_request
