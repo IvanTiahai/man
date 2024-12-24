@@ -105,7 +105,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Перевірка на плагіат через OpenAI
-    results_openai = check_plagiarism_openai(text)
+    results_openai =  check_plagiarism(text)
     report_openai = "Перевірка OpenAI:\n"
     for result in results_openai:
         report_openai += f"Фрагмент: {result['paragraph'][:50]}...\nРезультат: {result['result']}\n\n"
