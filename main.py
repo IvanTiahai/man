@@ -39,12 +39,27 @@ if not WEBHOOK_URL:
 def home():
     return "Сервер працює успішно!", 200
 
+
+
+#new
+application = ApplicationBuilder().token(TELEGRAM_TOKEN).build
+
+asyncio.run(application.bot.set_webhook(WEBHOOK_URL))
+application.add_handler(CommandHandler("start", start))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+
 # Маршрут для отримання запитів вебхука
 @flask_app.route("/telegram-webhook", methods=["POST"])
 def webhook():
     if request.method == "POST":
         json_update = request.get_json()
-        application.update_queue.put(json_update)
+
+        # Передача JSON-оновлення в чергу Telegram Application
+        if 'application' in globals():
+            application.update_queue.put(json_update)
+        else:
+            return "Telegram Application not initialized", 500
+
         return "OK", 200
 
 # Ініціалізація моделі для порівняння текстів
