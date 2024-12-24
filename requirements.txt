@@ -10,4 +10,3 @@ python-docx
 nest_asyncio
 gunicorn
 googlesearch-python
-hashlib
