@@ -42,7 +42,7 @@ def home():
 
 
 #new
-application = ApplicationBuilder().token(TELEGRAM_TOKEN).build
+application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
 asyncio.run(application.bot.set_webhook(WEBHOOK_URL))
 application.add_handler(CommandHandler("start", start))
