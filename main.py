@@ -81,9 +81,10 @@ async def setup_webhook():
     await application.bot.set_webhook(WEBHOOK_URL)
 
 @flask_app.route("/telegram-webhook", methods=["POST"])
-def webhook():
-    json_update = request.get_json()
-    asyncio.run(application.update_queue.put(json_update))
+async def webhook():
+    json_update = await request.get_json()
+    logger.info(f"Отримано оновлення від Telegram: {json_update}")
+    await application.update_queue.put(json_update)
     return "OK", 200
 
 if __name__ == "__main__":
