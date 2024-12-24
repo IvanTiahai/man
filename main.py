@@ -1,21 +1,12 @@
 import logging
 import os
-import asyncio
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import openai
-from flask import Flask
 
 # Ініціалізація логера
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Ініціалізація Flask
-flask_app = Flask(__name__)
-
-@flask_app.route("/")
-def home():
-    return "Telegram бот працює!", 200
 
 # Ініціалізація OpenAI API
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -26,11 +17,6 @@ if not openai.api_key:
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN не встановлено!")
-
-# URL для вебхуків
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Наприклад, https://ваш-домен.com/telegram-webhook
-if not WEBHOOK_URL:
-    raise ValueError("WEBHOOK_URL не встановлено!")
 
 # Telegram бот
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -76,28 +62,6 @@ application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_plagiarism))
 
-# Асинхронне встановлення вебхука
-async def setup_webhook():
-    await application.bot.set_webhook(WEBHOOK_URL)
-
-@flask_app.route("/telegram-webhook", methods=["POST"])
-async def webhook():
-    json_update = await request.get_json()
-    await application.update_queue.put(json_update)
-    return "OK", 200
-
 if __name__ == "__main__":
-    import threading
-
-    # Функція для запуску Flask
-    def run_flask():
-        port = int(os.getenv("PORT", 10000))
-        flask_app.run(host="0.0.0.0", port=port)
-
-    # Запуск Flask у окремому потоці
-    threading.Thread(target=run_flask).start()
-
-    # Запуск Telegram-бота
-    asyncio.run(setup_webhook())
-    logger.info("Telegram бот запущено!")
-
+    logger.info("Запуск Telegram-бота через Long Polling...")
+    application.run_polling()
