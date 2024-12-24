@@ -4,10 +4,18 @@ import asyncio
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import openai
+from flask import Flask
 
 # Ініціалізація логера
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Ініціалізація Flask
+flask_app = Flask(__name__)
+
+@flask_app.route("/")
+def home():
+    return "Telegram бот працює!", 200
 
 # Ініціалізація OpenAI API
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -73,5 +81,17 @@ async def setup_webhook():
     await application.bot.set_webhook(WEBHOOK_URL)
 
 if __name__ == "__main__":
+    import threading
+
+    # Функція для запуску Flask
+    def run_flask():
+        port = int(os.getenv("PORT", 5000))
+        flask_app.run(host="0.0.0.0", port=port)
+
+    # Запуск Flask у окремому потоці
+    threading.Thread(target=run_flask).start()
+
+    # Запуск Telegram-бота
     asyncio.run(setup_webhook())
     logger.info("Telegram бот запущено!")
+
