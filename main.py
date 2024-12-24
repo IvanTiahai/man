@@ -12,6 +12,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from docx import Document  # Для роботи з DOCX
 import nest_asyncio
 from gunicorn.app.base import BaseApplication  # Для продакшн-сервера
+from googlesearch import search
 
 # Ініціалізація Nest Asyncio
 nest_asyncio.apply()
@@ -50,6 +51,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text("Привіт! Виберіть тип задачі:", reply_markup=reply_markup)
 
+def check_plagiarism(text: str):
+    paragraphs = text.split("\n\n")
+    results = []
+    for paragraph in paragraphs:
+        if len(paragraph.strip()) > 10:  # Ігноруємо короткі фрагменти
+            try:
+                response = openai.Completion.create(
+                    engine="text-davinci-003",
+                    prompt=f"Перевір текст на плагіат: {paragraph}",
+                    max_tokens=150
+                )
+                results.append({
+                    "paragraph": paragraph,
+                    "result": response["choices"][0]["text"].strip()
+                })
+            except Exception as e:
+                results.append({
+                    "paragraph": paragraph,
+                    "result": f"Помилка: {str(e)}"
+                })
+    return results
+
+def search_google(text: str):  #    Шукає текст у Google і повертає посилання на схожі джерела.
+    links = []
+    try:
+        for result in search(text, num_results=5, lang="en"):
+            links.append(result)
+    except Exception as e:
+        links.append(f"Помилка пошуку: {str(e)}")
+    return links
+
+
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     document = update.message.document
     if not document:
@@ -71,8 +104,22 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Формат файлу не підтримується.")
         return
 
-    # Відправка результату аналізу файлу
-    await update.message.reply_text(f"Зміст файлу: {text[:1000]}")  # Відправляємо перші 1000 символів
+    # Перевірка на плагіат через OpenAI
+    results_openai = check_plagiarism_openai(text)
+    report_openai = "Перевірка OpenAI:\n"
+    for result in results_openai:
+        report_openai += f"Фрагмент: {result['paragraph'][:50]}...\nРезультат: {result['result']}\n\n"
+
+    # Перевірка на плагіат через Google
+    report_google = "Перевірка Google:\n"
+    for paragraph in text.split("\n\n"):
+        if len(paragraph.strip()) > 10:
+            links = search_google(paragraph[:50])  # Перевіряємо перші 50 символів фрагмента
+            report_google += f"Фрагмент: {paragraph[:50]}...\nДжерела:\n" + "\n".join(links) + "\n\n"
+
+    # Відправка результатів
+    await update.message.reply_text(report_openai[:4000])  # Telegram має обмеження 4000 символів
+    await update.message.reply_text(report_google[:4000])
 
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
