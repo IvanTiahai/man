@@ -1,33 +1,13 @@
 import logging
 import os
 import asyncio
-from io import BytesIO
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from transformers import AutoTokenizer, AutoModel
-from flask import Flask, request, jsonify, abort
 import openai
-import torch
-from sklearn.metrics.pairwise import cosine_similarity
-from docx import Document  # Для роботи з DOCX
-import nest_asyncio
-from gunicorn.app.base import BaseApplication  # Для продакшн-сервера
-from googlesearch import search
-from quart import Quart, request
-import hashlib
 
 # Ініціалізація логера
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Глобальний кеш
-cache = {}
-
-# Ініціалізація Nest Asyncio
-nest_asyncio.apply()
-
-# Ініціалізація Flask
-flask_app = Flask(__name__)
 
 # Ініціалізація OpenAI API
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -44,32 +24,21 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Наприклад, https://ваш-д�
 if not WEBHOOK_URL:
     raise ValueError("WEBHOOK_URL не встановлено!")
 
-# Головний маршрут для перевірки роботи сервера
-@flask_app.route("/")
-def home():
-    logger.info("Сервер працює успішно!")
-    return "Сервер працює успішно!", 200
-
-# Ініціалізація моделі для порівняння текстів
-tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
-model = AutoModel.from_pretrained("sentence-transformers/paraphrase-MiniLM-L6-v2")
-
-#new
 # Telegram бот
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [["Текстове повідомлення", "Текстовий документ"]]
+    keyboard = [["Перевірити текст на плагіат"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("Привіт! Виберіть тип задачі:", reply_markup=reply_markup)
+    await update.message.reply_text("Привіт! Введіть текст для перевірки на плагіат.", reply_markup=reply_markup)
 
-def get_document_hash(content: str) -> str:
-    return hashlib.sha256(content.encode('utf-8')).hexdigest()
+async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    input_text = update.message.text
+    logger.info(f"Отримано текст для перевірки: {input_text[:50]}...")
 
-def check_plagiarism(text: str):
-    paragraphs = text.split("\n\n")
+    paragraphs = input_text.split("\n\n")
     results = []
+
     for paragraph in paragraphs:
         if len(paragraph.strip()) > 10:  # Ігноруємо короткі фрагменти
-            logger.info(f"Перевіряється фрагмент: {paragraph[:50]}...")
             try:
                 response = openai.Completion.create(
                     engine="text-davinci-003",
@@ -85,179 +54,24 @@ def check_plagiarism(text: str):
                     "paragraph": paragraph,
                     "result": f"Помилка: {str(e)}"
                 })
-    return results
 
-def search_google(text: str):  #    Шукає текст у Google і повертає посилання на схожі джерела.
-    links = []
-    try:
-        for result in search(text, num_results=5, lang="en"):
-            links.append(result)
-    except Exception as e:
-        links.append(f"Помилка пошуку: {str(e)}")
-    return links
+    # Формування звіту
+    report = "Результати перевірки на плагіат:\n"
+    for result in results:
+        report += f"Фрагмент: {result['paragraph'][:50]}...\nРезультат: {result['result']}\n\n"
 
-
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"Отримано документ: {update.message.document.file_name}")
-    document = update.message.document
-    if not document:
-        logger.warning("Документ не було надіслано.")
-        await update.message.reply_text("Будь ласка, надішліть файл.")
-        return
-
-    file = await document.get_file()
-    file_path = await file.download_as_bytearray()
-    file_ext = os.path.splitext(document.file_name)[-1].lower()
-    buffer = BytesIO(file_path)
-
-    if file_ext == ".pdf":
-        text = read_pdf(buffer)
-    elif file_ext == ".txt":
-        text = buffer.decode("utf-8")
-    elif file_ext == ".docx":
-        text = read_docx(buffer)
-    else:
-        await update.message.reply_text("Формат файлу не підтримується.")
-        return
-
-    # Генерація хеша документа
-    doc_hash = get_document_hash(text)
-
-    # Перевірка кешу
-    if doc_hash in cache:
-        logger.info("Документ знайдено в кеші.")
-        cached_results = cache[doc_hash]
-        await update.message.reply_text(cached_results[:4000])  # Telegram має обмеження 4000 символів
-        return
-
-    # Перевірка на плагіат через OpenAI
-    results_openai = check_plagiarism(text)
-    report_openai = "Перевірка OpenAI:\n"
-    for result in results_openai:
-        report_openai += f"Фрагмент: {result['paragraph'][:50]}...\nРезультат: {result['result']}\n\n"
-
-    # Перевірка на плагіат через Google
-    report_google = "Перевірка Google:\n"
-    for paragraph in text.split("\n\n"):
-        if len(paragraph.strip()) > 10:
-            links = search_google(paragraph[:50])  # Перевіряємо перші 50 символів фрагмента
-            report_google += f"Фрагмент: {paragraph[:50]}...\nДжерела:\n" + "\n".join(links) + "\n\n"
-
-    # Збереження результатів у кеш
-    full_report = report_openai + "\n" + report_google
-    cache[doc_hash] = full_report
-
-    # Відправка результатів
-    await update.message.reply_text(report_openai[:4000])  # Telegram має обмеження 4000 символів
-    await update.message.reply_text(report_google[:4000])
-
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    input_text = update.message.text
-    reference_texts = ["Привіт, як справи?", "Це тестове повідомлення.", "Виберіть тип задачі."]
-    input_embedding = model(**tokenizer(input_text, return_tensors="pt"))[0].mean(dim=1)
-    reference_embeddings = torch.stack([model(**tokenizer(ref, return_tensors="pt"))[0].mean(dim=1) for ref in reference_texts])
-    similarities = cosine_similarity(input_embedding.detach().numpy(), reference_embeddings.detach().numpy())
-    max_similarity = similarities.max()
-    closest_match = reference_texts[similarities.argmax()]
-    similarity_threshold = 0.7
-
-    if max_similarity >= similarity_threshold:
-        await update.message.reply_text(f"Текст збігається з: \"{closest_match}\" (Схожість: {max_similarity:.2f})")
-    else:
-        await update.message.reply_text(f"Немає збігів. Найближчий текст: \"{closest_match}\" (Схожість: {max_similarity:.2f})")
+    # Надсилання результату користувачу
+    await update.message.reply_text(report[:4000])  # Telegram має обмеження у 4000 символів
 
 # Ініціалізація Telegram Application    
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
-application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_plagiarism))
 
 # Асинхронне встановлення вебхука
 async def setup_webhook():
     await application.bot.set_webhook(WEBHOOK_URL)
-    
-asyncio.run(setup_webhook())
-
-# Маршрут для отримання запитів вебхука
-@flask_app.route("/telegram-webhook", methods=["POST"])
-async def webhook():
-    if request.method == "POST":
-        json_update = await request.get_json()
-        logger.info(f"Отримано запит: {json_update}")
-        await application.update_queue.put(json_update)
-        return "OK", 200
-
-
-
-# Обмеження розміру файлу для Flask
-@flask_app.before_request
-def limit_file_size():
-    if request.content_length and request.content_length > 16 * 1024 * 1024:  # 16 MB
-        abort(413, description="Файл занадто великий.")
-
-# Функції для читання файлів
-def read_pdf(file) -> str:
-    try:
-        from PyPDF2 import PdfReader
-        reader = PdfReader(file)
-        text = "".join(page.extract_text() or "" for page in reader.pages)
-        return text
-    except Exception as e:
-        return f"Помилка обробки PDF: {str(e)}"
-
-def read_docx(file) -> str:
-    try:
-        document = Document(file)
-        text = "".join(paragraph.text + "\n" for paragraph in document.paragraphs)
-        return text
-    except Exception as e:
-        return f"Помилка обробки DOCX: {str(e)}"
-
-def read_txt(file) -> str:
-    try:
-        return file.read().decode("utf-8")
-    except Exception as e:
-        return f"Помилка обробки TXT: {str(e)}"
-
-# Flask маршрут для завантаження файлів
-@flask_app.route('/upload/', methods=['POST'])
-def upload_file():
-    try:
-        file = request.files['file']
-        file_ext = os.path.splitext(file.filename)[-1].lower()
-        buffer = BytesIO(file.read())  # Зберігаємо файл в пам'яті
-
-        if file_ext == ".pdf":
-            text = read_pdf(buffer)
-        elif file_ext == ".txt":
-            text = buffer.getvalue().decode("utf-8")
-        elif file_ext == ".docx":
-            text = read_docx(buffer)
-        else:
-            return jsonify({"detail": "Формат файлу не підтримується"}), 400
-
-        return jsonify({"filename": file.filename, "content": text[:1000]})
-    except Exception as e:
-        return jsonify({"detail": f"Помилка: {str(e)}"}), 500
 
 if __name__ == "__main__":
-    from gunicorn.app.base import BaseApplication
-
-    class FlaskAppWrapper(BaseApplication):
-        def __init__(self, app, options=None):
-            self.app = app
-            self.options = options or {}
-            super().__init__()
-
-        def load_config(self):
-            for key, value in self.options.items():
-                self.cfg.set(key, value)
-
-        def load(self):
-            return self.app
-    
-    options = {
-        "bind": f"0.0.0.0:{os.getenv('PORT', '5000')}",
-        "workers": 4,
-    }
-    FlaskAppWrapper(flask_app, options).run()
+    asyncio.run(setup_webhook())
+    logger.info("Telegram бот запущено!")
