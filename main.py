@@ -11,6 +11,7 @@ import torch
 from sklearn.metrics.pairwise import cosine_similarity
 from docx import Document  # Для роботи з DOCX
 import nest_asyncio
+from gunicorn.app.base import BaseApplication  # Для продакшн-сервера
 
 # Ініціалізація Nest Asyncio
 nest_asyncio.apply()
@@ -33,6 +34,11 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Наприклад, https://ваш-д�
 if not WEBHOOK_URL:
     raise ValueError("WEBHOOK_URL не встановлено!")
 
+# Головний маршрут для перевірки роботи сервера
+@flask_app.route("/")
+def home():
+    return "Сервер працює успішно!", 200
+
 # Маршрут для отримання запитів вебхука
 @flask_app.route("/telegram-webhook", methods=["POST"])
 def webhook():
@@ -51,7 +57,7 @@ def limit_file_size():
     if request.content_length and request.content_length > 16 * 1024 * 1024:  # 16 MB
         abort(413, description="Файл занадто великий.")
 
-# Функція для читання PDF
+# Функції для читання файлів
 def read_pdf(file) -> str:
     try:
         from PyPDF2 import PdfReader
@@ -61,7 +67,6 @@ def read_pdf(file) -> str:
     except Exception as e:
         return f"Помилка обробки PDF: {str(e)}"
 
-# Функція для читання DOCX
 def read_docx(file) -> str:
     try:
         document = Document(file)
@@ -70,7 +75,6 @@ def read_docx(file) -> str:
     except Exception as e:
         return f"Помилка обробки DOCX: {str(e)}"
 
-# Функція для читання TXT
 def read_txt(file) -> str:
     try:
         return file.read().decode("utf-8")
@@ -104,27 +108,40 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text("Привіт! Виберіть тип задачі:", reply_markup=reply_markup)
 
-# Функція для обробки текстів
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Ви написали: {update.message.text}")
 
 # Основний цикл
 async def main():
-    from hypercorn.asyncio import serve
-    from hypercorn.config import Config
-    config = Config()
-    config.bind = ["0.0.0.0:5500"]
-
-    # Telegram бот
+    global application
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+    await application.bot.delete_webhook()
+    await application.bot.set_webhook(WEBHOOK_URL + "/telegram-webhook")
+
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
-    flask_task = serve(flask_app, config)
-    telegram_task = application.run_polling(close_loop=False)
+    port = int(os.getenv("PORT", 5000))  # Порт для сервера
+    flask_app.run(host="0.0.0.0", port=port, threaded=True)
 
-    await asyncio.gather(flask_task, telegram_task)
+# Запуск через Gunicorn
+class FlaskAppWrapper(BaseApplication):
+    def __init__(self, app, options=None):
+        self.app = app
+        self.options = options or {}
+        super().__init__()
+
+    def load_config(self):
+        for key, value in self.options.items():
+            self.cfg.set(key, value)
+
+    def load(self):
+        return self.app
 
 if __name__ == "__main__":
-    # application.bot.set_webhook(WEBHOOK_URL + "/telegram-webhook") #СПРОБУВАТИ ЗАКОМЕНТУВАТИ
-    asyncio.run(main())
+    options = {
+        "bind": f"0.0.0.0:{os.getenv('PORT', '5000')}",
+        "workers": 4,
+    }
+    FlaskAppWrapper(flask_app, options).run()
