@@ -92,6 +92,25 @@ async def webhook():
         return "Internal Server Error", 500
 
 if __name__ == "__main__":
-    # Запуск Flask через Gunicorn
-    port = int(os.getenv("PORT", 5000))  # Зміна порту на значення Render
-    flask_app.run(host="0.0.0.0", port=port)
+    from gunicorn.app.base import BaseApplication
+
+    class GunicornApp(BaseApplication):
+        def __init__(self, app, options=None):
+            self.app = app
+            self.options = options or {}
+            super().__init__()
+
+        def load_config(self):
+            for key, value in self.options.items():
+                self.cfg.set(key, value)
+
+        def load(self):
+            return self.app
+
+    port = int(os.getenv("PORT", 10000))  # Встановіть порт з конфігурації Render
+    options = {
+        "bind": f"0.0.0.0:{port}",
+        "workers": 4,  # Встановіть кількість робочих процесів
+    }
+
+    GunicornApp(flask_app, options).run()
