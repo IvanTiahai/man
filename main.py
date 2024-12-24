@@ -81,15 +81,16 @@ async def setup_webhook():
     await application.bot.set_webhook(WEBHOOK_URL)
 
 @flask_app.route("/telegram-webhook", methods=["POST"])
-async def webhook():
+def webhook():
     try:
-        json_update = await request.get_json()
+        json_update = request.get_json()  # Синхронний виклик
         logger.info(f"Отримано оновлення від Telegram: {json_update}")
-        await application.update_queue.put(json_update)
+        asyncio.run(application.update_queue.put(json_update))  # Використання asyncio.run
         return "OK", 200
     except Exception as e:
         logger.error(f"Помилка при обробці запиту: {e}")
         return "Internal Server Error", 500
+
 
 if __name__ == "__main__":
     from gunicorn.app.base import BaseApplication
