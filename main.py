@@ -81,9 +81,9 @@ async def setup_webhook():
     await application.bot.set_webhook(WEBHOOK_URL)
 
 @flask_app.route("/telegram-webhook", methods=["POST"])
-async def webhook():
-    json_update = await request.get_json()
-    await application.update_queue.put(json_update)
+def webhook():
+    json_update = request.get_json()
+    asyncio.run(application.update_queue.put(json_update))
     return "OK", 200
 
 if __name__ == "__main__":
