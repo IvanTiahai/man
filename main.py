@@ -80,12 +80,18 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_pl
 async def setup_webhook():
     await application.bot.set_webhook(WEBHOOK_URL)
 
+@flask_app.route("/telegram-webhook", methods=["POST"])
+async def webhook():
+    json_update = await request.get_json()
+    await application.update_queue.put(json_update)
+    return "OK", 200
+
 if __name__ == "__main__":
     import threading
 
     # Функція для запуску Flask
     def run_flask():
-        port = int(os.getenv("PORT", 5000))
+        port = int(os.getenv("PORT", 10000))
         flask_app.run(host="0.0.0.0", port=port)
 
     # Запуск Flask у окремому потоці
