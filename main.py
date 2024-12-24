@@ -14,6 +14,10 @@ import nest_asyncio
 from gunicorn.app.base import BaseApplication  # Для продакшн-сервера
 from googlesearch import search
 
+# Ініціалізація логера
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Ініціалізація Nest Asyncio
 nest_asyncio.apply()
 
@@ -38,6 +42,7 @@ if not WEBHOOK_URL:
 # Головний маршрут для перевірки роботи сервера
 @flask_app.route("/")
 def home():
+    logger.info("Сервер працює успішно!")
     return "Сервер працює успішно!", 200
 
 # Ініціалізація моделі для порівняння текстів
@@ -84,8 +89,10 @@ def search_google(text: str):  #    Шукає текст у Google і пове�
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"Отримано документ: {update.message.document.file_name}")
     document = update.message.document
     if not document:
+        logger.warning("Документ не було надіслано.")
         await update.message.reply_text("Будь ласка, надішліть файл.")
         return
 
