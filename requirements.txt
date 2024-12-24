@@ -1,5 +1,3 @@
 python-telegram-bot
-torch
 flask
-transformers
 openai
