@@ -84,17 +84,23 @@ async def setup_webhook():
 @flask_app.route("/telegram-webhook", methods=["POST"])
 async def webhook():
     try:
-        json_update = request.get_json()
+        json_update = await request.get_json()
         logger.info(f"Отримано оновлення від Telegram: {json_update}")
         
-        # Додаткове логування перед додаванням в чергу
-        logger.info("Додаємо оновлення в чергу")
-        await application.update_queue.put(json_update)
+        # Додаємо обробку в окремий асинхронний процес
+        asyncio.create_task(process_update(json_update))
         
         return "OK", 200
     except Exception as e:
         logger.error(f"Помилка при обробці запиту: {e}")
         return "Internal Server Error", 500
+
+async def process_update(json_update):
+    try:
+        # Ваш код для обробки оновлень Telegram
+        await application.update_queue.put(json_update)
+    except Exception as e:
+        logger.error(f"Помилка обробки оновлення: {e}")
 
 
 
