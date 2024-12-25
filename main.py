@@ -34,6 +34,7 @@ if not WEBHOOK_URL:
 
 # Telegram бот
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info("Виклик функції start")
     keyboard = [["Перевірити текст на плагіат"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text("Привіт! Введіть текст для перевірки на плагіат.", reply_markup=reply_markup)
@@ -51,7 +52,7 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 response = openai.Completion.create(
                     engine="text-davinci-003",
                     prompt=f"Перевір текст на плагіат: {paragraph}",
-                    max_tokens=150
+                    max_tokens=200
                 )
                 results.append({
                     "paragraph": paragraph,
@@ -81,15 +82,21 @@ async def setup_webhook():
     await application.bot.set_webhook(WEBHOOK_URL)
 
 @flask_app.route("/telegram-webhook", methods=["POST"])
-def webhook():
+async def webhook():
     try:
-        json_update = request.get_json()  # Синхронний виклик
+        json_update = request.get_json()
         logger.info(f"Отримано оновлення від Telegram: {json_update}")
-        asyncio.run(application.update_queue.put(json_update))  # Використання asyncio.run
+        
+        # Додаткове логування перед додаванням в чергу
+        logger.info("Додаємо оновлення в чергу")
+        await application.update_queue.put(json_update)
+        
         return "OK", 200
     except Exception as e:
         logger.error(f"Помилка при обробці запиту: {e}")
         return "Internal Server Error", 500
+
+
 
 
 if __name__ == "__main__":
