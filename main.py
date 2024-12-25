@@ -5,7 +5,6 @@ import sqlite3
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import openai
-import tiktoken  # Для підрахунку токенів
 
 # Ініціалізація логера
 logging.basicConfig(level=logging.INFO)
@@ -38,30 +37,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-def get_saved_result(text):
-    """Перевіряє наявність тексту в базі і повертає результат."""
-    conn = sqlite3.connect(db_file)
-    cursor = conn.cursor()
-    cursor.execute("SELECT result FROM texts WHERE text = ?", (text,))
-    result = cursor.fetchone()
-    conn.close()
-    return result[0] if result else None
-
-def save_result(text, result):
-    """Зберігає текст і результат у базу."""
-    conn = sqlite3.connect(db_file)
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR IGNORE INTO texts (text, result) VALUES (?, ?)", (text, result))
-    conn.commit()
-    conn.close()
-
-def split_text_by_tokens(text, max_tokens=4000):
-    """Розбиває текст на частини, які не перевищують max_tokens."""
-    tokenizer = tiktoken.get_encoding("cl100k_base")
-    tokens = tokenizer.encode(text)
-    chunks = [tokens[i:i + max_tokens] for i in range(0, len(tokens), max_tokens)]
-    return [tokenizer.decode(chunk) for chunk in chunks]
-
 # Telegram бот
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [["Перевірити текст на плагіат"]]
@@ -72,38 +47,19 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
     input_text = update.message.text
     logger.info(f"Отримано текст для перевірки: {input_text[:50]}...")
 
-    paragraphs = input_text.split("\n\n")
-    results = []
-
-    for paragraph in paragraphs:
-        if len(paragraph.strip()) > 10:  # Ігноруємо короткі фрагменти
-            try:
-                # Використовуємо openai.ChatCompletion для перевірки на плагіат
-                response = openai.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "You are a plagiarism checker."},
-                        {"role": "user", "content": f"Перевір текст на плагіат: {paragraph}"}
-                    ]
-                )
-                result_text = response["choices"][0]["message"]["content"].strip()
-                results.append({
-                    "paragraph": paragraph,
-                    "result": result_text
-                })
-            except Exception as e:
-                results.append({
-                    "paragraph": paragraph,
-                    "result": f"Помилка: {str(e)}"
-                })
-
-    # Формування звіту
-    report = "Результати перевірки на плагіат:\n"
-    for result in results:
-        report += f"Фрагмент: {result['paragraph'][:50]}...\nРезультат: {result['result']}\n\n"
-
-    # Надсилання результату користувачу
-    await update.message.reply_text(report[:4000])  # Telegram має обмеження у 4000 символів
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a plagiarism checker."},
+                {"role": "user", "content": f"Перевір текст на плагіат: {input_text}"}
+            ]
+        )
+        result = response["choices"][0]["message"]["content"].strip()
+        await update.message.reply_text(f"Результат перевірки:\n{result}")
+    except Exception as e:
+        logger.error(f"Помилка при обробці тексту: {e}")
+        await update.message.reply_text(f"Помилка при обробці тексту:\n{str(e)}")
 
 # Ініціалізація Telegram Application
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
