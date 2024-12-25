@@ -61,34 +61,41 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привіт! Введіть текст для перевірки на плагіат.", reply_markup=reply_markup)
 
 async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    input_text = update.message.text.strip()
+    input_text = update.message.text
     logger.info(f"Отримано текст для перевірки: {input_text[:50]}...")
 
-    if not input_text:
-        await update.message.reply_text("Будь ласка, введіть текст для перевірки.")
-        return
+    paragraphs = input_text.split("\n\n")
+    results = []
 
-    # Перевірка у локальній базі даних
-    saved_result = get_saved_result(input_text)
-    if saved_result:
-        logger.info("Результат знайдено у локальній базі даних.")
-        await update.message.reply_text(f"Результат із бази даних:\n{saved_result}")
-        return
+    for paragraph in paragraphs:
+        if len(paragraph.strip()) > 10:  # Ігноруємо короткі фрагменти
+            try:
+                # Використовуємо openai.ChatCompletion замість openai.Completion
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "You are a plagiarism checker."},
+                        {"role": "user", "content": f"Перевір текст на плагіат: {paragraph}"}
+                    ],
+                    max_tokens=150
+                )
+                results.append({
+                    "paragraph": paragraph,
+                    "result": response["choices"][0]["message"]["content"].strip()
+                })
+            except Exception as e:
+                results.append({
+                    "paragraph": paragraph,
+                    "result": f"Помилка: {str(e)}"
+                })
 
-    # Перевірка через OpenAI API
-    try:
-        response = openai.Completion.create(
-            engine="text-davinci-003",
-            prompt=f"Перевір текст на плагіат: {input_text}",
-            max_tokens=150
-        )
-        result = response["choices"][0]["text"].strip()
-        save_result(input_text, result)
-        logger.info("Результат збережено у базі даних.")
-        await update.message.reply_text(f"Результат перевірки:\n{result}")
-    except Exception as e:
-        logger.error(f"Помилка при перевірці: {e}")
-        await update.message.reply_text(f"Помилка при перевірці тексту: {str(e)}")
+    # Формування звіту
+    report = "Результати перевірки на плагіат:\n"
+    for result in results:
+        report += f"Фрагмент: {result['paragraph'][:50]}...\nРезультат: {result['result']}\n\n"
+
+    # Надсилання результату користувачу
+    await update.message.reply_text(report[:4000])  # Telegram має обмеження у 4000 символів
 
 # Ініціалізація Telegram Application
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
