@@ -72,39 +72,38 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
     input_text = update.message.text
     logger.info(f"Отримано текст для перевірки: {input_text[:50]}...")
 
-    # Перевірка в базі даних
-    cached_result = get_saved_result(input_text)
-    if cached_result:
-        logger.info("Текст знайдено в базі даних.")
-        await update.message.reply_text(f"Результати перевірки з кешу:\n{cached_result[:4000]}")
-        return
-
-    # Розбиваємо текст на частини, якщо він перевищує обмеження
-    text_chunks = split_text_by_tokens(input_text)
-
+    paragraphs = input_text.split("\n\n")
     results = []
-    for chunk in text_chunks:
-        try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a plagiarism checker."},
-                    {"role": "user", "content": f"Перевір текст на плагіат: {chunk}"}
-                ],
-                max_tokens=4000
-            )
-            results.append(response["choices"][0]["message"]["content"].strip())
-        except Exception as e:
-            logger.error(f"Помилка при перевірці тексту: {str(e)}")
-            results.append(f"Помилка при обробці тексту: {str(e)}")
 
-    full_result = "\n".join(results)
+    for paragraph in paragraphs:
+        if len(paragraph.strip()) > 10:  # Ігноруємо короткі фрагменти
+            try:
+                # Використовуємо openai.ChatCompletion для перевірки на плагіат
+                response = openai.ChatCompletion.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You are a plagiarism checker."},
+                        {"role": "user", "content": f"Перевір текст на плагіат: {paragraph}"}
+                    ]
+                )
+                result_text = response["choices"][0]["message"]["content"].strip()
+                results.append({
+                    "paragraph": paragraph,
+                    "result": result_text
+                })
+            except Exception as e:
+                results.append({
+                    "paragraph": paragraph,
+                    "result": f"Помилка: {str(e)}"
+                })
 
-    # Збереження в базу даних
-    save_result(input_text, full_result)
+    # Формування звіту
+    report = "Результати перевірки на плагіат:\n"
+    for result in results:
+        report += f"Фрагмент: {result['paragraph'][:50]}...\nРезультат: {result['result']}\n\n"
 
     # Надсилання результату користувачу
-    await update.message.reply_text(full_result[:4000])  # Telegram має обмеження у 4000 символів
+    await update.message.reply_text(report[:4000])  # Telegram має обмеження у 4000 символів
 
 # Ініціалізація Telegram Application
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
