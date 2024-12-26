@@ -83,7 +83,7 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": f"Перевір текст на плагіат: {input_text}"}
             ],
-            max_tokens=4000
+            max_tokens=200
         )
         result = response.choices[0].message.content.strip()
 
