@@ -4,7 +4,7 @@ import asyncio
 import sqlite3
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-import openai
+from openai import OpenAI
 from dotenv import load_dotenv
 
 # Завантаження змінних середовища
@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Ініціалізація OpenAI API
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = os.environ['OPENAI_API_KEY']
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY не встановлено!")
 
