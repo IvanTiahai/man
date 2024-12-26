@@ -67,34 +67,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
     input_text = update.message.text
-    logger.info(f"Отримано текст для перевірки: {input_text[:50]}...")
+    logger.info(f"Received text for plagiarism check: {input_text[:50]}...")
 
-    # Перевірка у локальній базі
+    # Check in the local database
     saved_result = get_saved_result(input_text)
     if saved_result:
-        await update.message.reply_text(f"Результат з бази даних:\n{saved_result}")
+        await update.message.reply_text(f"Result from database:\n{saved_result}")
         return
 
     try:
-        # Запит до OpenAI API
-        response = await client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": f"Перевір текст на плагіат: {input_text}"}
-            ],
-            max_tokens=200
+        # Request to OpenAI API
+        response = openai.Completion.create(
+            model="text-davinci-003",
+            prompt=f"Check the following text for plagiarism:\n\n{input_text}",
+            max_tokens=200,
+            temperature=0.0  # Set temperature to 0 for deterministic output
         )
-        result = response.choices[0].message.content.strip()
+        result = response.choices[0].text.strip()
 
-        # Збереження результату у базу
+        # Save the result in the database
         save_result(input_text, result)
 
-        # Відправлення результату
-        await update.message.reply_text(f"Результат перевірки:\n{result}")
+        # Send the result to the user
+        await update.message.reply_text(f"Plagiarism check result:\n{result}")
     except Exception as e:
-        logger.error(f"Помилка при обробці тексту: {e}")
-        await update.message.reply_text(f"Помилка при обробці тексту:\n{str(e)}")
+        logger.error(f"Error processing text: {e}")
+        await update.message.reply_text(f"Error processing text:\n{str(e)}")
+
 
 # Ініціалізація Telegram Application
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
