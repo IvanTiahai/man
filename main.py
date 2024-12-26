@@ -4,10 +4,8 @@ import asyncio
 import sqlite3
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from openai import OpenAI
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
-
-client = OpenAI()
 
 # Завантаження змінних середовища
 load_dotenv()
@@ -17,10 +15,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Ініціалізація OpenAI API
-api_key = os.environ['OPENAI_API_KEY']
+api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
     raise ValueError("OPENAI_API_KEY не встановлено!")
-client = OpenAI(api_key=api_key)
+client = AsyncOpenAI(api_key=api_key)
 
 # Ініціалізація Telegram Token
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -78,13 +76,16 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        # Запит до  API
-        response = client.completions.create(
-            model="gpt-4",
-            prompt=f"Перевір текст на плагіат: {input_text}",
-            max_tokens=4000  # Підтримка великих текстів
+        # Запит до OpenAI API
+        response = await client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": f"Перевір текст на плагіат: {input_text}"}
+            ],
+            max_tokens=4000
         )
-        result = response.choices[0].text.strip()
+        result = response.choices[0].message.content.strip()
 
         # Збереження результату у базу
         save_result(input_text, result)
