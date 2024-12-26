@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 api_key = os.environ['OPENAI_API_KEY']
 if not api_key:
     raise ValueError("OPENAI_API_KEY не встановлено!")
+client = OpenAI(api_key=api_key)
 
 # Ініціалізація Telegram Token
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -80,13 +81,10 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Запит до  API
         response = client.completions.create(
             model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a plagiarism checker."},
-                {"role": "user", "content": f"Перевір текст на плагіат: {input_text}"}
-            ],
+            prompt=f"Перевір текст на плагіат: {input_text}",
             max_tokens=4000  # Підтримка великих текстів
         )
-        result = response["choices"][0]["message"]["content"].strip()
+        result = response.choices[0].text.strip()
 
         # Збереження результату у базу
         save_result(input_text, result)
