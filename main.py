@@ -4,31 +4,34 @@ import asyncio
 import sqlite3
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-import openai  # Import the OpenAI library
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
-# Load environment variables
+# Завантаження змінних середовища
 load_dotenv()
 
-# Initialize logger
+# Ініціалізація логера
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize OpenAI API
-openai.api_key = os.getenv("OPENAI_API_KEY")
-if not openai.api_key:
-    raise ValueError("OPENAI_API_KEY is not set!")
+# Ініціалізація OpenAI API
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise ValueError("OPENAI_API_KEY не встановлено!")
 
-# Initialize Telegram Token
+# Ініціалізація клієнта OpenAI
+client = AsyncOpenAI(api_key=api_key)
+
+# Ініціалізація Telegram Token
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TELEGRAM_TOKEN:
-    raise ValueError("TELEGRAM_TOKEN is not set!")
+    raise ValueError("TELEGRAM_TOKEN не встановлено!")
 
-# Initialize SQLite database
+# Ініціалізація бази даних SQLite
 db_file = "texts.db"
 
 def init_db():
-    """Initialize SQLite database."""
+    """Ініціалізація бази даних SQLite."""
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
     cursor.execute('''
@@ -42,7 +45,7 @@ def init_db():
     conn.close()
 
 def get_saved_result(text):
-    """Check if the text exists in the database and return the result."""
+    """Перевіряє наявність тексту в базі і повертає результат."""
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
     cursor.execute("SELECT result FROM texts WHERE text = ?", (text,))
@@ -51,54 +54,55 @@ def get_saved_result(text):
     return result[0] if result else None
 
 def save_result(text, result):
-    """Save the text and result to the database."""
+    """Зберігає текст і результат у базу."""
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
     cursor.execute("INSERT OR IGNORE INTO texts (text, result) VALUES (?, ?)", (text, result))
     conn.commit()
     conn.close()
 
-# Telegram bot handlers
+# Telegram бот
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [["Check text for plagiarism"]]
+    keyboard = [["Перевірити текст на плагіат"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("Hello! Please enter the text you'd like to check for plagiarism.", reply_markup=reply_markup)
+    await update.message.reply_text("Привіт! Введіть текст для перевірки на плагіат.", reply_markup=reply_markup)
 
 async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
     input_text = update.message.text
-    logger.info(f"Received text for plagiarism check: {input_text[:50]}...")
+    logger.info(f"Отримано текст для перевірки: {input_text[:50]}...")
 
-    # Check in the local database
+    # Перевірка у локальній базі
     saved_result = get_saved_result(input_text)
     if saved_result:
-        await update.message.reply_text(f"Result from database:\n{saved_result}")
+        await update.message.reply_text(f"Результат з бази даних:\n{saved_result}")
         return
 
     try:
-        # Request to OpenAI API using text-davinci-003
-        response = openai.Completion.create(
-            model="text-davinci-003",
-            prompt=f"Check the following text for plagiarism:\n\n{input_text}",
+        # Запит до OpenAI API
+        response = await client.completions.create(
+            model="text-davinci-002",
+            prompt=f"Перевір наступний текст на плагіат:\n\n{input_text}",
             max_tokens=200,
-            temperature=0.0  # Set temperature to 0 for deterministic output
+            temperature=0.0  # Низька температура для детермінованості
         )
         result = response.choices[0].text.strip()
 
-        # Save the result in the database
+        # Збереження результату у базу
         save_result(input_text, result)
 
-        # Send the result to the user
-        await update.message.reply_text(f"Plagiarism check result:\n{result}")
+        # Надсилання результату користувачу
+        await update.message.reply_text(f"Результат перевірки на плагіат:\n{result}")
     except Exception as e:
-        logger.error(f"Error processing text: {e}")
-        await update.message.reply_text(f"Error processing text:\n{str(e)}")
+        logger.error(f"Помилка при обробці тексту: {e}")
+        await update.message.reply_text(f"Помилка при обробці тексту:\n{str(e)}")
 
-# Initialize Telegram Application
+
+# Ініціалізація Telegram Application
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_plagiarism))
 
 if __name__ == "__main__":
-    init_db()  # Initialize the database
-    logger.info("Starting the bot...")
+    init_db()  # Ініціалізація бази даних
+    logger.info("Запуск бота...")
     asyncio.run(application.run_polling())
