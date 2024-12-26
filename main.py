@@ -79,13 +79,16 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # Запит до OpenAI API
-        response = await client.completions.create(
-            model="text-davinci-002",
-            prompt=f"Перевір наступний текст на плагіат:\n\n{input_text}",
-            max_tokens=200,
-            temperature=0.0  # Низька температура для детермінованості
+        response = await client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a plagiarism checker."},
+                {"role": "user", "content": f"Перевір текст на плагіат: {input_text}"}
+            ],
+            max_tokens=4000,
+            temperature=0.0  # Низька температура для стабільності
         )
-        result = response.choices[0].text.strip()
+        result = response.choices[0].message.content.strip()
 
         # Збереження результату у базу
         save_result(input_text, result)
@@ -95,7 +98,6 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Помилка при обробці тексту: {e}")
         await update.message.reply_text(f"Помилка при обробці тексту:\n{str(e)}")
-
 
 # Ініціалізація Telegram Application
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
