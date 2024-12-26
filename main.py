@@ -15,8 +15,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Ініціалізація OpenAI API
-openai.api_key = os.environ['OPENAI_API_KEY']
-if not openai.api_key:
+api_key = os.environ['OPENAI_API_KEY']
+if not api_key:
     raise ValueError("OPENAI_API_KEY не встановлено!")
 
 # Ініціалізація Telegram Token
