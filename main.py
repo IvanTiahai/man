@@ -75,8 +75,8 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        # Запит до OpenAI API
-        response = openai.ChatCompletion.create(
+        # Запит до  API
+        response = ChatCompletion.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a plagiarism checker."},
