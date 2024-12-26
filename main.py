@@ -7,6 +7,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from openai import OpenAI
 from dotenv import load_dotenv
 
+client = OpenAI()
+
 # Завантаження змінних середовища
 load_dotenv()
 
@@ -76,7 +78,7 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # Запит до  API
-        response = openai.Completion.create(
+        response = client.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a plagiarism checker."},
