@@ -56,7 +56,7 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Помилка при обробці тексту: {e}")
         await update.message.reply_text(f"Помилка при обробці тексту:\n{str(e)}")
 
-async def main():
+async def run_bot():
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_plagiarism))
@@ -78,6 +78,7 @@ async def main():
 if __name__ == "__main__":
     try:
         loop = asyncio.get_event_loop()
-        loop.run_until_complete(main())
-    except RuntimeError as e:
+        loop.create_task(run_bot())  # Використовуємо існуючий event loop
+        loop.run_forever()  # Запускаємо нескінченний цикл
+    except Exception as e:
         logger.error(f"Помилка: {e}")
