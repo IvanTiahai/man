@@ -62,7 +62,7 @@ async def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_plagiarism))
 
     # Webhook конфігурація
-    WEBHOOK_URL = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/{TELEGRAM_TOKEN}"
+    WEBHOOK_URL = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/{TELEGRAM_TOKEN}"  # Фактичний URL сервера
 
     # Видаляємо старий Webhook і встановлюємо новий
     await application.bot.delete_webhook()
@@ -75,6 +75,7 @@ async def main():
         url_path=TELEGRAM_TOKEN,
         webhook_url=WEBHOOK_URL,
     )
+
 
 # Запуск головної функції
 if __name__ == "__main__":
