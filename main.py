@@ -62,7 +62,7 @@ async def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_plagiarism))
 
     # Webhook конфігурація
-    WEBHOOK_URL = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/{TELEGRAM_TOKEN}"  # Фактичний URL сервера
+    WEBHOOK_URL = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/{TELEGRAM_TOKEN}"
 
     # Видаляємо старий Webhook і встановлюємо новий
     await application.bot.delete_webhook()
@@ -73,17 +73,11 @@ async def main():
         listen="0.0.0.0",
         port=int(os.getenv("PORT", 8443)),
         url_path=TELEGRAM_TOKEN,
-        webhook_url=WEBHOOK_URL,
     )
 
-
-# Запуск головної функції
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(main())
     except RuntimeError as e:
-        if "This event loop is already running" in str(e):
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(main())
-        else:
-            raise
+        logger.error(f"Помилка: {e}")
