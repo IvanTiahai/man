@@ -3,8 +3,8 @@ import os
 import asyncio
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-import openai
 from dotenv import load_dotenv
+import openai
 
 # Завантаження змінних середовища
 load_dotenv()
@@ -23,6 +23,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN не встановлено!")
 
+# Telegram bot
 async def check_with_openai(text):
     """Перевіряє текст на плагіат за допомогою OpenAI API."""
     try:
@@ -39,7 +40,6 @@ async def check_with_openai(text):
         logger.error(f"Помилка OpenAI API: {e}")
         return f"Помилка API: {str(e)}"
 
-# Telegram бот
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [["Перевірити текст на плагіат"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
@@ -50,7 +50,6 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Отримано текст для перевірки: {input_text[:50]}...")
 
     try:
-        # Перевірка через OpenAI API
         result = await check_with_openai(input_text)
         await update.message.reply_text(f"Результат перевірки на плагіат:\n{result}")
     except Exception as e:
@@ -58,10 +57,26 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Помилка при обробці тексту:\n{str(e)}")
 
 # Ініціалізація Telegram Application
-application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_plagiarism))
+async def main():
+    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_plagiarism))
+
+    # Webhook конфігурація
+    WEBHOOK_URL = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/{TELEGRAM_TOKEN}"
+
+    # Видаляємо старий Webhook і встановлюємо новий
+    await application.bot.delete_webhook()
+    await application.bot.set_webhook(WEBHOOK_URL)
+
+    # Запускаємо сервер
+    await application.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.getenv("PORT", 8443)),
+        url_path=TELEGRAM_TOKEN,
+        webhook_url=WEBHOOK_URL,
+    )
 
 if __name__ == "__main__":
     logger.info("Запуск бота...")
-    asyncio.run(application.run_polling())
+    asyncio.run(main())
