@@ -78,7 +78,15 @@ async def run_bot():
 if __name__ == "__main__":
     try:
         loop = asyncio.get_event_loop()
-        loop.create_task(run_bot())  # Використовуємо існуючий event loop
+        task = loop.create_task(run_bot())  # Створюємо задачу
         loop.run_forever()  # Запускаємо нескінченний цикл
     except Exception as e:
         logger.error(f"Помилка: {e}")
+    finally:
+        # Закриваємо loop коректно
+        pending = asyncio.all_tasks(loop)
+        for task in pending:
+            task.cancel()
+        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        loop.close()
+
