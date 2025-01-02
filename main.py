@@ -1,10 +1,10 @@
 import logging
 import os
-import asyncio
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 import openai
+import asyncio
 
 # Завантаження змінних середовища
 load_dotenv()
@@ -56,7 +56,6 @@ async def check_plagiarism(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Помилка при обробці тексту: {e}")
         await update.message.reply_text(f"Помилка при обробці тексту:\n{str(e)}")
 
-# Ініціалізація Telegram Application
 async def main():
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
@@ -77,6 +76,13 @@ async def main():
         webhook_url=WEBHOOK_URL,
     )
 
+# Запуск головної функції
 if __name__ == "__main__":
-    logger.info("Запуск бота...")
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except RuntimeError as e:
+        if "This event loop is already running" in str(e):
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(main())
+        else:
+            raise
