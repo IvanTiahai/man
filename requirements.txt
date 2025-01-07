@@ -1,3 +1,6 @@
 python-telegram-bot==20.3  # Для роботи з Telegram API
 openai==0.27.8             # Для інтеграції з OpenAI API
 python-dotenv==1.0.0       # Для завантаження змінних середовища з .env
+textdistance
+aiohttp
+sqlite3
